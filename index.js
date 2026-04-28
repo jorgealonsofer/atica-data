@@ -78,29 +78,31 @@ app.get("/valor-referencia", async (req, res) => {
     const html = await getResp.text();
 
     const form = new URLSearchParams();
-
-    form.set("__EVENTTARGET", "ctl00$Contenido$bAceptar");
-    form.set("__EVENTARGUMENT", "");
-    form.set("__VIEWSTATE", getInputValue(html, "__VIEWSTATE"));
-    form.set("__VIEWSTATEGENERATOR", getInputValue(html, "__VIEWSTATEGENERATOR"));
-    form.set("__VIEWSTATEENCRYPTED", getInputValue(html, "__VIEWSTATEENCRYPTED"));
-    form.set("__EVENTVALIDATION", getInputValue(html, "__EVENTVALIDATION"));
-
-    form.set("ctl00$hdIdioma", getInputValue(html, "ctl00$hdIdioma") || "es");
-    form.set("ctl00$hdFinalidadMaestra", getInputValue(html, "ctl00$hdFinalidadMaestra"));
-    form.set("ctl00$hdVerModal", getInputValue(html, "ctl00$hdVerModal") || "N");
-
-    form.set("ctl00$Contenido$hdNumeroNombres", getInputValue(html, "ctl00$Contenido$hdNumeroNombres"));
-    form.set("ctl00$Contenido$apell", getInputValue(html, "ctl00$Contenido$apell"));
-    form.set("ctl00$Contenido$codigoSIA", getInputValue(html, "ctl00$Contenido$codigoSIA"));
-    form.set("ctl00$Contenido$procedimientoSIA", getInputValue(html, "ctl00$Contenido$procedimientoSIA"));
-    form.set("ctl00$Contenido$hdRequiereDNI", getInputValue(html, "ctl00$Contenido$hdRequiereDNI") || "1");
-    form.set("ctl00$Contenido$hdCSV", getInputValue(html, "ctl00$Contenido$hdCSV"));
-
+    
+    // coger TODOS los inputs reales del HTML
+    const inputs = html.match(/<input\b[^>]*>/gi) || [];
+    
+    for (const input of inputs) {
+      const nameMatch = input.match(/\bname=["']([^"']+)["']/i);
+      if (!nameMatch) continue;
+    
+      const name = decodeHtml(nameMatch[1]);
+    
+      const valueMatch = input.match(/\bvalue=["']([^"']*)["']/i);
+      const value = valueMatch ? decodeHtml(valueMatch[1]) : "";
+    
+      form.set(name, value);
+    }
+    
+    // Sobrescribir solo los datos que queremos enviar
     form.set("ctl00$Contenido$nif", dni);
     form.set("ctl00$Contenido$soporte", soporte);
     form.set("ctl00$Contenido$nombre", "");
     form.set("ctl00$Contenido$apellido", "");
+    
+    // Botón ASP.NET real
+    form.set("__EVENTTARGET", "ctl00$Contenido$bAceptar");
+    form.set("__EVENTARGUMENT", "");
 
     const postResp = await fetch(url, {
       method: "POST",
