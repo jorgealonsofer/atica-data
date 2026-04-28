@@ -56,11 +56,16 @@ app.get("/valor-referencia", async (req, res) => {
       });
     }
     
-    await page.waitForSelector("#ctl00_Contenido_IdNIF", { timeout: 15000 });
-    await page.type("#ctl00_Contenido_IdNIF", dni);
+    await page.waitForSelector('input[name="ctl00$Contenido$nif"]', { timeout: 20000 });
+    await page.type('input[name="ctl00$Contenido$nif"]', dni);
     
-    await page.waitForSelector("#ctl00_Contenido_soporte", { timeout: 15000 });
-    await page.type("#ctl00_Contenido_soporte", soporte);
+    await page.waitForSelector('input[name="ctl00$Contenido$soporte"]', { timeout: 20000 });
+    await page.type('input[name="ctl00$Contenido$soporte"]', soporte);
+    
+    await Promise.all([
+      page.click('button[name="ctl00$Contenido$btnValidar"], input[name="ctl00$Contenido$btnValidar"]'),
+      page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 })
+    ]);
 
     await page.waitForTimeout(5000);
 
