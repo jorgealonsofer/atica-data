@@ -130,7 +130,13 @@ app.get("/valor-referencia", async (req, res) => {
       cookies_ok: Boolean(cookies),
       has_valores: postHtml.includes("VALORES DE REFERENCIA"),
       has_catastral: postHtml.includes("Referencia Catastral"),
-      preview: postHtml.replace(/\s+/g, " ").substring(0, 2000)
+      has_error_dni: postHtml.toLowerCase().includes("dni") && postHtml.toLowerCase().includes("soporte"),
+      texto: postHtml
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .substring(0, 3000)
     });
 
   } catch (error) {
