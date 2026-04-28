@@ -1,5 +1,6 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 
 const app = express();
 
@@ -16,10 +17,11 @@ app.get("/valor-referencia", async (req, res) => {
 
   try {
     const browser = await puppeteer.launch({
-  headless: "new",
-  args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-});
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
 
     const page = await browser.newPage();
 
@@ -28,15 +30,10 @@ app.get("/valor-referencia", async (req, res) => {
       { waitUntil: "networkidle2" }
     );
 
-    // 
     await page.waitForTimeout(3000);
 
-    // 
     await page.type("input[type='text']", dni);
 
-    // 
-
-    // 
     await page.waitForTimeout(5000);
 
     const html = await page.content();
