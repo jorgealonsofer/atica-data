@@ -24,105 +24,62 @@ app.get("/valor-referencia", async (req, res) => {
 
     const page = await browser.newPage();
 
-    // =========================
-    // 1. LOGIN
-    // =========================
     await page.goto(
       "https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=2026",
-      { waitUntil: "networkidle2" }
+      { waitUntil: "networkidle2", timeout: 60000 }
     );
 
     await page.type("#ctl00_Contenido_nif", dni);
     await page.type("#ctl00_Contenido_soporte", soporte);
 
     await page.click("#ctl00_Contenido_bAceptar");
-
     await page.waitForTimeout(6000);
-
-    await page.select("#ctl00_Contenido_ddlFinalidad", "1");
-    
-    await page.click("#ctl00_Contenido_txtFechaConsulta");
-    await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
-    
-    await page.click("#ctl00_Contenido_txtRC2");
-    await page.type("#ctl00_Contenido_txtRC2", refcat);
-    
-     await Promise.all([
-      page.waitForNavigation({ waitUntil: "networkidle2" }),
-      page.click("#ctl00_Contenido_btnValorReferencia")
-    ]);
-    
-    const resultadoTexto = await page.evaluate(() => document.body.innerText);
-    
-    await browser.close();
-    
-    return res.json({
-      ok: true,
-      url_final: page.url(),
-      tiene_valor: resultadoTexto.includes("Valor de Referencia") || text.includes("VALOR DE REFERENCIA"),
-      texto: resultadoTexto.replace(/\s+/g, " ").substring(0, 4000)
-    });
-
-    
-    // =========================
-    // 2. YA ESTAMOS DENTRO
-    // =========================
 
     const url2 = page.url();
 
-    // Comprobación
     if (!url2.includes("OVCBusqueda")) {
-      const html = await page.content();
+      const textoError = await page.evaluate(() => document.body.innerText);
       await browser.close();
 
       return res.json({
         ok: false,
         error: "No ha pasado login",
         url: url2,
-        html: html.substring(0, 1000)
+        texto: textoError.replace(/\s+/g, " ").substring(0, 2000),
       });
     }
 
-    // =========================
-    // 3. RELLENAR SEGUNDO FORM
-    // =========================
+    await page.select("#ctl00_Contenido_ddlFinalidad", "1");
 
-    // seleccionar finalidad (si no seleccionas esto, falla)
-    await page.select("select[name='ctl00$Contenido$ddlFinalidad']", "CONSULTA");
+    await page.evaluate((refcat) => {
+      const fecha = document.querySelector("#ctl00_Contenido_txtFechaConsulta");
+      const rc = document.querySelector("#ctl00_Contenido_txtRC2");
 
-    // meter referencia catastral
-    await page.type("#ctl00_Contenido_txtRC", refcat);
+      if (fecha) fecha.value = "28/04/2026";
+      if (rc) rc.value = refcat;
 
-    // fecha (muchas veces viene ya, pero por si acaso)
-    await page.evaluate(() => {
-      const f = document.querySelector("#ctl00_Contenido_txtFecha");
-      if (f && !f.value) {
-        const hoy = new Date();
-        f.value = hoy.toLocaleDateString("es-ES");
-      }
+      const btn = document.querySelector("#ctl00_Contenido_btnValorReferencia");
+      if (btn) btn.click();
+    }, refcat);
+
+    await page.waitForTimeout(10000);
+
+    const resultadoTexto = await page.evaluate(() => {
+      return document.body ? document.body.innerText : "";
     });
 
-    // botón buscar
-    await page.click("#ctl00_Contenido_btnBuscar");
-
-    await page.waitForTimeout(7000);
-
-    // =========================
-    // 4. RESULTADO
-    // =========================
-
-    const finalHtml = await page.content();
-    const text = await page.evaluate(() => document.body.innerText);
+    const urlFinal = page.url();
 
     await browser.close();
 
     return res.json({
       ok: true,
-      url_final: page.url(),
-      tiene_valor: text.includes("Valor de Referencia"),
-      texto: text.replace(/\s+/g, " ").substring(0, 3000)
+      url_final: urlFinal,
+      tiene_valor:
+        resultadoTexto.includes("Valor de Referencia") ||
+        resultadoTexto.includes("VALOR DE REFERENCIA"),
+      texto: resultadoTexto.replace(/\s+/g, " ").substring(0, 4000),
     });
-
   } catch (error) {
     if (browser) await browser.close().catch(() => {});
     return res.json({ ok: false, error: error.message });
