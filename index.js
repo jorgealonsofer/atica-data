@@ -30,9 +30,21 @@ app.get("/valor-referencia", async (req, res) => {
       { waitUntil: "networkidle2" }
     );
 
-    await page.waitForTimeout(3000);
-
-    await page.type("input[type='text']", dni);
+    await page.waitForTimeout(5000);
+    
+    // buscar el frame correcto
+    const frames = page.frames();
+    
+    // debug (opcional)
+    console.log(frames.map(f => f.url()));
+    
+    // normalmente el segundo frame es el bueno
+    const frame = frames.find(f => f.url().includes("OVCFrames") === false);
+    
+    // ahora dentro del frame buscamos el input
+    await frame.waitForSelector("input");
+    
+    await frame.type("input", dni);
 
     await page.waitForTimeout(5000);
 
