@@ -41,7 +41,7 @@ app.get("/valor-referencia", async (req, res) => {
     await page.type('input[name="ctl00$Contenido$soporte"]', soporte);
 
 
-// Buscar botón que contenga "validar"
+// Buscar botón validar
 await page.waitForSelector('input, button, a', { timeout: 20000 });
 
 const validarSelector = await page.evaluate(() => {
@@ -54,35 +54,49 @@ const validarSelector = await page.evaluate(() => {
 
   if (!el) return null;
 
-  el.setAttribute("data-puppeteer-validar", "1");
-  return "[data-puppeteer-validar='1']";
+  el.setAttribute("data-validar-puppeteer", "1");
+  return "[data-validar-puppeteer='1']";
 });
 
 if (!validarSelector) {
-  const botones = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('input, button, a')).map(el => ({
-      tag: el.tagName,
-      id: el.id,
-      name: el.getAttribute("name"),
-      value: el.getAttribute("value"),
-      text: el.innerText || el.textContent
-    }))
-  );
-
-  return res.json({
-    error: "No se encontró botón validar",
-    botones
-  });
+  return res.json({ error: "No se encontró botón validar" });
 }
 
-await Promise.allSettled([
-  page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
-  page.click(validarSelector)
-]);
+// Preparar espera ANTES del click
+const navigationPromise = page.waitForNavigation({
+  waitUntil: "domcontentloaded",
+  timeout: 60000
+}).catch(() => null);
 
-await page.waitForTimeout(5000);
+// Click
+await page.click(validarSelector);
 
-const html = await page.content();
+// Esperar navegación o postback
+await navigationPromise;
+
+// Esperar a que el documento esté listo
+await page.waitForFunction(
+  () => document.readyState === "complete" || document.readyState === "interactive",
+  { timeout: 30000 }
+).catch(() => null);
+
+// Pequeña pausa de seguridad
+await page.waitForTimeout(3000);
+
+// Leer HTML de forma segura
+let html = "";
+for (let i = 0; i < 5; i++) {
+  try {
+    html = await page.content();
+    break;
+  } catch (e) {
+    await page.waitForTimeout(1000);
+  }
+}
+
+if (!html) {
+  return res.json({ error: "No se pudo leer el HTML después de validar" });
+}
 
     
     await browser.close();
