@@ -4,21 +4,23 @@ const chromium = require("@sparticuz/chromium");
 
 const app = express();
 
-// cache simple de sesión
+// cache de sesión
 let SESSION = {
   cookies: null,
-  createdAt: 0
+  createdAt: 0,
+  dni: null
 };
 
 const SESSION_TTL = 10 * 60 * 1000; // 10 min
 
-// =========================
-// LOGIN 
-// =========================
-async function getSession(dni, soporte) {
+async function getSession(dni, soporte, ejercicio) {
   const now = Date.now();
 
-  if (SESSION.cookies && (now - SESSION.createdAt < SESSION_TTL)) {
+  if (
+    SESSION.cookies &&
+    SESSION.dni === dni &&
+    now - SESSION.createdAt < SESSION_TTL
+  ) {
     return SESSION.cookies;
   }
 
@@ -31,7 +33,7 @@ async function getSession(dni, soporte) {
   const page = await browser.newPage();
 
   await page.goto(
-    "https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=2026",
+    `https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${ejercicio}`,
     { waitUntil: "networkidle2" }
   );
 
@@ -50,34 +52,30 @@ async function getSession(dni, soporte) {
 
   SESSION = {
     cookies: cookieString,
-    createdAt: now
+    createdAt: now,
+    dni
   };
 
   return cookieString;
 }
 
-// =========================
-// ENDPOINT PRINCIPAL
-// =========================
 app.get("/valor-referencia", async (req, res) => {
-  const { dni, soporte, refcat } = req.query;
+  const { dni, soporte, refcat, ejercicio } = req.query;
 
-  if (!dni || !soporte || !refcat) {
+  if (!dni || !soporte || !refcat || !ejercicio) {
     return res.json({ ok: false, error: "Faltan parámetros" });
   }
 
   try {
-    const cookies = await getSession(dni, soporte);
+    const cookies = await getSession(dni, soporte, ejercicio);
 
-    // =========================
-    // GET página final (rápido)
-    // =========================
-    const url = `https://www.sedecatastro.gob.es/CYCBienInmueble/OVCConsultaValorReferencia.aspx?RefC=${refcat}&ejercicio=2026`;
+    // URL correcta dinámica
+    const url = `https://www.sedecatastro.gob.es/CYCBienInmueble/OVCBusqueda.aspx?VR=SI&ejercicio=${ejercicio}&RefC=${refcat}`;
 
     const resp = await fetch(url, {
       headers: {
         "cookie": cookies,
-        "user-agent": "Mozilla/5.0",
+        "user-agent": "Mozilla/5.0"
       }
     });
 
@@ -90,15 +88,14 @@ app.get("/valor-referencia", async (req, res) => {
       .replace(/\s+/g, " ")
       .trim();
 
-    // =========================
-    // EXTRAER VALOR
-    // =========================
     const match = texto.match(/Valor de Referencia\s+([\d.,]+)\s+euros/i);
 
     return res.json({
       ok: true,
+      ejercicio,
+      refcat,
       valor_referencia: match ? match[1] : null,
-      encontrado: !!match,
+      encontrado: !!match
     });
 
   } catch (error) {
