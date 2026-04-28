@@ -52,40 +52,35 @@ app.get("/valor-referencia", async (req, res) => {
     await page.select("#ctl00_Contenido_ddlFinalidad", "1");
 
     await page.$eval("#ctl00_Contenido_txtFechaConsulta", el => el.value = "");
-await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
+    await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
 
-await page.$eval("#ctl00_Contenido_txtRC2", el => el.value = "");
-await page.type("#ctl00_Contenido_txtRC2", refcat);
+    await page.$eval("#ctl00_Contenido_txtRC2", el => el.value = "");
+    await page.type("#ctl00_Contenido_txtRC2", refcat);
 
+    // En vez de hacer click en el botón, pulsamos Enter desde el campo RC.
+    // Evita el error de contexto destruido en Puppeteer.
+    await page.focus("#ctl00_Contenido_txtRC2");
+    await page.keyboard.press("Enter");
 
-await page.click("#ctl00_Contenido_btnValorReferencia");
+    await page.waitForTimeout(10000);
 
-await page.waitForFunction(() => {
-  return document.body && (
-    document.body.innerText.includes("Valor de Referencia") ||
-    document.body.innerText.includes("VALOR DE REFERENCIA") ||
-    document.body.innerText.includes("No se ha encontrado")
-  );
-}, { timeout: 60000 });
+    const texto = await page.evaluate(() => {
+      return document.body ? document.body.innerText : "";
+    }).catch(() => "");
 
-    const finalHtml = await page.content();
     const urlFinal = page.url();
 
     await browser.close();
 
-    const texto = finalHtml
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
     return res.json({
       ok: true,
       url_final: urlFinal,
-      tiene_valor: texto.includes("Valor de Referencia") || texto.includes("VALOR DE REFERENCIA"),
-      texto: texto.substring(0, 5000),
+      tiene_valor:
+        texto.includes("Valor de Referencia") ||
+        texto.includes("VALOR DE REFERENCIA"),
+      texto: texto.replace(/\s+/g, " ").substring(0, 5000),
     });
+
   } catch (error) {
     if (browser) await browser.close().catch(() => {});
     return res.json({ ok: false, error: error.message });
