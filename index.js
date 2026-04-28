@@ -40,52 +40,51 @@ app.get("/valor-referencia", async (req, res) => {
     await page.waitForSelector('input[name="ctl00$Contenido$soporte"]', { timeout: 20000 });
     await page.type('input[name="ctl00$Contenido$soporte"]', soporte);
 
-    // Buscar y pulsar el botón de validar por texto/value
-    await page.waitForSelector('input[type="submit"], button, a', { timeout: 20000 });
 
-    const clicked = await page.evaluate(() => {
-      const els = Array.from(document.querySelectorAll('input[type="submit"], button, a'));
+// Buscar botón que contenga "validar"
+await page.waitForSelector('input, button, a', { timeout: 20000 });
 
-      const btn = els.find(el => {
-        const txt = ((el.value || el.innerText || el.textContent || "") + "").toLowerCase();
-        return txt.includes("validar");
-      });
+const validarSelector = await page.evaluate(() => {
+  const els = Array.from(document.querySelectorAll('input, button, a'));
 
-      if (!btn) return false;
+  const el = els.find(el => {
+    const txt = ((el.value || el.innerText || el.textContent || "") + "").toLowerCase();
+    return txt.includes("validar");
+  });
 
-      btn.click();
-      return true;
-    });
+  if (!el) return null;
 
-    if (!clicked) {
-      const botones = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('input[type="submit"], button, a'))
-          .map(el => ({
-            tag: el.tagName,
-            name: el.getAttribute("name"),
-            id: el.getAttribute("id"),
-            value: el.getAttribute("value"),
-            text: el.innerText || el.textContent
-          }))
-      );
+  el.setAttribute("data-puppeteer-validar", "1");
+  return "[data-puppeteer-validar='1']";
+});
 
-      await browser.close();
+if (!validarSelector) {
+  const botones = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('input, button, a')).map(el => ({
+      tag: el.tagName,
+      id: el.id,
+      name: el.getAttribute("name"),
+      value: el.getAttribute("value"),
+      text: el.innerText || el.textContent
+    }))
+  );
 
-      return res.json({
-        error: "No se encontró botón validar",
-        botones
-      });
-    }
+  return res.json({
+    error: "No se encontró botón validar",
+    botones
+  });
+}
 
-    try {
-      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 });
-    } catch (e) {
-      // Por si el botón valida con postback/ajax y no navegación normal
-      await page.waitForTimeout(5000);
-    }
+await Promise.allSettled([
+  page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
+  page.click(validarSelector)
+]);
 
-    const html = await page.content();
+await page.waitForTimeout(5000);
 
+const html = await page.content();
+
+    
     await browser.close();
 
     res.json({
