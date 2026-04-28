@@ -32,18 +32,29 @@ app.get("/valor-referencia", async (req, res) => {
 
     await page.waitForTimeout(5000);
     
-    // buscar el frame correcto
     const frames = page.frames();
     
-    // debug (opcional)
-    console.log(frames.map(f => f.url()));
+    const infoFrames = frames.map((f, index) => ({
+      index,
+      url: f.url(),
+      name: f.name()
+    }));
     
-    // normalmente el segundo frame es el bueno
-    const frame = frames.find(f => f.url().includes("OVCFrames") === false);
+    const frame = frames.find(f =>
+      f.url().includes("Accesos") ||
+      f.url().includes("SECAccDNI") ||
+      f.url().includes("CYCBienInmueble") ||
+      f.url().includes("sedecatastro")
+    );
     
-    // ahora dentro del frame buscamos el input
-    await frame.waitForSelector("input");
+    if (!frame) {
+      return res.json({
+        error: "No se encontró frame válido",
+        frames: infoFrames
+      });
+    }
     
+    await frame.waitForSelector("input", { timeout: 10000 });
     await frame.type("input", dni);
 
     await page.waitForTimeout(5000);
