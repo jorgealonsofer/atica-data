@@ -43,17 +43,23 @@ app.get("/valor-referencia", async (req, res) => {
     await page.waitForSelector('input[name="ctl00$Contenido$soporte"]', { timeout: 20000 });
     await page.type('input[name="ctl00$Contenido$soporte"]', soporte);
 
-    // Click en botón REAL
-    await page.waitForSelector("#ctl00_Contenido_bAceptar", { timeout: 20000 });
+    
+// Click en botón REAL
+await page.waitForSelector("#ctl00_Contenido_bAceptar", { timeout: 20000 });
 
-    const navigationPromise = page.waitForNavigation({
-      waitUntil: "domcontentloaded",
-      timeout: 60000
-    }).catch(() => null);
+// Click SIN waitForNavigation porque Catastro usa postback ASP.NET
+await page.click("#ctl00_Contenido_bAceptar");
 
-    await page.click("#ctl00_Contenido_bAceptar");
+// Esperar a que cambie el contenido
+await page.waitForFunction(() => {
+  return document.body.innerText.includes("valor") ||
+         document.body.innerText.includes("referencia") ||
+         document.body.innerText.length > 1000;
+}, { timeout: 20000 }).catch(() => {});
 
-    await navigationPromise;
+// Espera extra
+await page.waitForTimeout(5000);
+    
 
     // Esperar a que cargue bien después del submit
     await page.waitForTimeout(5000);
