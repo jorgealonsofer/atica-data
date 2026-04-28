@@ -106,11 +106,15 @@ app.get("/valor-referencia", async (req, res) => {
       method: "POST",
       redirect: "manual",
       headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-ES,es;q=0.9",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": cookies,
-        "Referer": url
+        "Origin": "https://www.sedecatastro.gob.es",
+        "Referer": url,
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Cookie": cookies
       },
       body: form.toString()
     });
