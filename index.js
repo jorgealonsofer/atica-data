@@ -39,33 +39,28 @@ app.get("/valor-referencia", async (req, res) => {
 
     await page.waitForTimeout(6000);
 
-    const campos = await page.evaluate(() => ({
-      url: location.href,
-      selects: Array.from(document.querySelectorAll("select")).map(el => ({
-        id: el.id,
-        name: el.name,
-        options: Array.from(el.options).map(o => ({
-          value: o.value,
-          text: o.textContent.trim()
-        }))
-      })),
-      inputs: Array.from(document.querySelectorAll("input")).map(el => ({
-        type: el.type,
-        id: el.id,
-        name: el.name,
-        value: el.value,
-        placeholder: el.placeholder
-      })),
-      buttons: Array.from(document.querySelectorAll("button,input[type='submit']")).map(el => ({
-        id: el.id,
-        name: el.name,
-        value: el.value,
-        text: el.innerText || el.textContent
-      }))
-    }));
+    await page.select("#ctl00_Contenido_ddlFinalidad", "1");
+    
+    await page.click("#ctl00_Contenido_txtFechaConsulta");
+    await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
+    
+    await page.click("#ctl00_Contenido_txtRC2");
+    await page.type("#ctl00_Contenido_txtRC2", refcat);
+    
+    await page.click("#ctl00_Contenido_btnValorReferencia");
+    
+    await page.waitForTimeout(8000);
+    
+    const text = await page.evaluate(() => document.body.innerText);
     
     await browser.close();
-    return res.json({ ok: true, fase: "debug_segunda_pantalla", campos });
+    
+    return res.json({
+      ok: true,
+      url_final: page.url(),
+      tiene_valor: text.includes("Valor de Referencia") || text.includes("VALOR DE REFERENCIA"),
+      texto: text.replace(/\s+/g, " ").substring(0, 4000)
+    });
 
     
     // =========================
