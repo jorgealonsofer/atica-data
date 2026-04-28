@@ -33,43 +33,48 @@ app.get("/valor-referencia", async (req, res) => {
       { waitUntil: "domcontentloaded", timeout: 60000 }
     );
 
+    // Espera a que cargue bien
     await page.waitForTimeout(5000);
 
-    const debugAntes = await page.evaluate(() => {
-      return {
-        url: location.href,
-        title: document.title,
-        inputs: Array.from(document.querySelectorAll("input")).map(el => ({
-          type: el.type,
-          name: el.name,
-          id: el.id,
-          value: el.value,
-          placeholder: el.placeholder
-        })),
-        buttons: Array.from(document.querySelectorAll("input, button, a")).map(el => ({
-          tag: el.tagName,
-          type: el.type || "",
-          name: el.name || "",
-          id: el.id || "",
-          value: el.value || "",
-          text: (el.innerText || el.textContent || "").trim()
-        }))
-      };
-    });
+    // Rellenar campos
+    await page.waitForSelector('input[name="ctl00$Contenido$nif"]', { timeout: 20000 });
+    await page.type('input[name="ctl00$Contenido$nif"]', dni);
+
+    await page.waitForSelector('input[name="ctl00$Contenido$soporte"]', { timeout: 20000 });
+    await page.type('input[name="ctl00$Contenido$soporte"]', soporte);
+
+    // Click en botón REAL
+    await page.waitForSelector("#ctl00_Contenido_bAceptar", { timeout: 20000 });
+
+    const navigationPromise = page.waitForNavigation({
+      waitUntil: "domcontentloaded",
+      timeout: 60000
+    }).catch(() => null);
+
+    await page.click("#ctl00_Contenido_bAceptar");
+
+    await navigationPromise;
+
+    // Esperar a que cargue bien después del submit
+    await page.waitForTimeout(5000);
+
+    const html = await page.content();
 
     await browser.close();
 
-    return res.json({
+    res.json({
       ok: true,
-      fase: "debug_inicial",
-      debugAntes
+      url: page.url(),
+      html: html.substring(0, 1500)
     });
 
   } catch (error) {
-    if (browser) await browser.close().catch(() => {});
-    return res.json({
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+
+    res.json({
       ok: false,
-      fase: "error",
       error: error.message
     });
   }
