@@ -47,9 +47,10 @@ app.get("/valor-referencia", async (req, res) => {
     await page.click("#ctl00_Contenido_txtRC2");
     await page.type("#ctl00_Contenido_txtRC2", refcat);
     
-    await page.click("#ctl00_Contenido_btnValorReferencia");
-    
-    await page.waitForTimeout(8000);
+     await Promise.all([
+      page.waitForNavigation({ waitUntil: "networkidle2" }),
+      page.click("#ctl00_Contenido_btnValorReferencia")
+    ]);
     
     const resultadoTexto = await page.evaluate(() => document.body.innerText);
     
