@@ -16,8 +16,10 @@ app.get("/valor-referencia", async (req, res) => {
 
   try {
     const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
+  headless: "new",
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+});
 
     const page = await browser.newPage();
 
