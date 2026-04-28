@@ -51,18 +51,13 @@ app.get("/valor-referencia", async (req, res) => {
 
     await page.select("#ctl00_Contenido_ddlFinalidad", "1");
 
-    await page.evaluate((refcat) => {
-      const fecha = document.querySelector("#ctl00_Contenido_txtFechaConsulta");
-      const rc = document.querySelector("#ctl00_Contenido_txtRC2");
-
-      if (fecha) fecha.value = "28/04/2026";
-      if (rc) rc.value = refcat;
-
-      const btn = document.querySelector("#ctl00_Contenido_btnValorReferencia");
-      if (btn) btn.click();
-    }, refcat);
-
-    await page.waitForTimeout(10000);
+    await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
+    await page.type("#ctl00_Contenido_txtRC2", refcat);
+  
+    await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
+    page.click("#ctl00_Contenido_btnValorReferencia")
+  ]);
 
     const resultadoTexto = await page.evaluate(() => {
       return document.body ? document.body.innerText : "";
