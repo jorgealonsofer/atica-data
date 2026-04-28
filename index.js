@@ -25,9 +25,11 @@ app.get("/valor-referencia", async (req, res) => {
 
     const page = await browser.newPage();
 
+    const ejercicio = req.query.ejercicio || "2026";
+    
     await page.goto(
-      "https://www1.sedecatastro.gob.es/OVCFrames.aspx?TIPO=CONSULTA",
-      { waitUntil: "networkidle2" }
+      `https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${ejercicio}`,
+      { waitUntil: "networkidle2", timeout: 60000 }
     );
 
     await page.waitForTimeout(5000);
@@ -54,8 +56,11 @@ app.get("/valor-referencia", async (req, res) => {
       });
     }
     
-    await frame.waitForSelector("input", { timeout: 10000 });
-    await frame.type("input", dni);
+    await page.waitForSelector("#ctl00_Contenido_IdNIF", { timeout: 15000 });
+    await page.type("#ctl00_Contenido_IdNIF", dni);
+    
+    await page.waitForSelector("#ctl00_Contenido_soporte", { timeout: 15000 });
+    await page.type("#ctl00_Contenido_soporte", soporte);
 
     await page.waitForTimeout(5000);
 
