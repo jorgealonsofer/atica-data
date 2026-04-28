@@ -126,21 +126,20 @@ app.get("/valor-referencia", async (req, res) => {
     const location = postResp.headers.get("location");
     const postHtml = await postResp.text();
 
-    return res.json({
-      ok: true,
-      status: postResp.status,
-      location,
-      cookies_ok: Boolean(cookies),
-      has_valores: postHtml.includes("VALORES DE REFERENCIA"),
-      has_catastral: postHtml.includes("Referencia Catastral"),
-      has_error_dni: postHtml.toLowerCase().includes("dni") && postHtml.toLowerCase().includes("soporte"),
-      texto: postHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .substring(0, 3000)
-    });
+return res.json({
+  ok: true,
+  status: postResp.status,
+  location,
+  boton_html: (html.match(/<button[\s\S]{0,1000}?ctl00_Contenido_bAceptar[\s\S]{0,1000}?<\/button>/i) || ["NO ENCONTRADO"])[0],
+  form_tag: (html.match(/<form[^>]+>/i) || ["NO FORM"])[0],
+  action: (html.match(/<form[^>]+action=["']([^"']+)["']/i) || [null, null])[1],
+  preview: postHtml
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .substring(0, 1500)
+});
 
   } catch (error) {
     return res.json({
