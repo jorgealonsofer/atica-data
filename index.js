@@ -39,6 +39,35 @@ app.get("/valor-referencia", async (req, res) => {
 
     await page.waitForTimeout(6000);
 
+    const campos = await page.evaluate(() => ({
+      url: location.href,
+      selects: Array.from(document.querySelectorAll("select")).map(el => ({
+        id: el.id,
+        name: el.name,
+        options: Array.from(el.options).map(o => ({
+          value: o.value,
+          text: o.textContent.trim()
+        }))
+      })),
+      inputs: Array.from(document.querySelectorAll("input")).map(el => ({
+        type: el.type,
+        id: el.id,
+        name: el.name,
+        value: el.value,
+        placeholder: el.placeholder
+      })),
+      buttons: Array.from(document.querySelectorAll("button,input[type='submit']")).map(el => ({
+        id: el.id,
+        name: el.name,
+        value: el.value,
+        text: el.innerText || el.textContent
+      }))
+    }));
+    
+    await browser.close();
+    return res.json({ ok: true, fase: "debug_segunda_pantalla", campos });
+
+    
     // =========================
     // 2. YA ESTAMOS DENTRO
     // =========================
