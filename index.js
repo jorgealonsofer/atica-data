@@ -1,6 +1,4 @@
 const express = require("express");
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
 
 const app = express();
 
@@ -8,78 +6,135 @@ app.get("/", (req, res) => {
   res.send("API funcionando");
 });
 
+function getInputValue(html, name) {
+  const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  let re = new RegExp(`<input[^>]*name=["']${safeName}["'][^>]*value=["']([^"']*)["'][^>]*>`, "i");
+  let m = html.match(re);
+  if (m) return decodeHtml(m[1]);
+
+  re = new RegExp(`<input[^>]*value=["']([^"']*)["'][^>]*name=["']${safeName}["'][^>]*>`, "i");
+  m = html.match(re);
+  if (m) return decodeHtml(m[1]);
+
+  return "";
+}
+
+function decodeHtml(str) {
+  return String(str)
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function collectCookies(response, oldCookies = "") {
+  const setCookie = response.headers.getSetCookie
+    ? response.headers.getSetCookie()
+    : [];
+
+  const cookieParts = oldCookies
+    ? oldCookies.split(";").map(c => c.trim()).filter(Boolean)
+    : [];
+
+  for (const c of setCookie) {
+    cookieParts.push(c.split(";")[0]);
+  }
+
+  const map = new Map();
+
+  for (const c of cookieParts) {
+    const [k, ...rest] = c.split("=");
+    map.set(k, rest.join("="));
+  }
+
+  return Array.from(map.entries())
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
+
 app.get("/valor-referencia", async (req, res) => {
-  const { dni, soporte } = req.query;
+  const dni = req.query.dni;
+  const soporte = req.query.soporte;
   const ejercicio = req.query.ejercicio || "2026";
 
   if (!dni || !soporte) {
-    return res.json({ error: "Faltan parámetros" });
+    return res.json({ ok: false, error: "Faltan parámetros dni o soporte" });
   }
 
-  let browser;
-
   try {
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+    const url = `https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${encodeURIComponent(ejercicio)}`;
+
+    const getResp = await fetch(url, {
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml"
+      }
     });
 
-    const page = await browser.newPage();
+    let cookies = collectCookies(getResp);
+    const html = await getResp.text();
 
-    await page.goto(
-      `https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${ejercicio}`,
-      { waitUntil: "domcontentloaded", timeout: 60000 }
-    );
+    const form = new URLSearchParams();
 
-    // Espera a que cargue bien
-    await page.waitForTimeout(5000);
+    form.set("__EVENTTARGET", "");
+    form.set("__EVENTARGUMENT", "");
+    form.set("__VIEWSTATE", getInputValue(html, "__VIEWSTATE"));
+    form.set("__VIEWSTATEGENERATOR", getInputValue(html, "__VIEWSTATEGENERATOR"));
+    form.set("__VIEWSTATEENCRYPTED", getInputValue(html, "__VIEWSTATEENCRYPTED"));
+    form.set("__EVENTVALIDATION", getInputValue(html, "__EVENTVALIDATION"));
 
-    // Rellenar campos
-    await page.waitForSelector('input[name="ctl00$Contenido$nif"]', { timeout: 20000 });
-    await page.type('input[name="ctl00$Contenido$nif"]', dni);
+    form.set("ctl00$hdIdioma", getInputValue(html, "ctl00$hdIdioma") || "es");
+    form.set("ctl00$hdFinalidadMaestra", getInputValue(html, "ctl00$hdFinalidadMaestra"));
+    form.set("ctl00$hdVerModal", getInputValue(html, "ctl00$hdVerModal") || "N");
 
-    await page.waitForSelector('input[name="ctl00$Contenido$soporte"]', { timeout: 20000 });
-    await page.type('input[name="ctl00$Contenido$soporte"]', soporte);
+    form.set("ctl00$Contenido$hdNumeroNombres", getInputValue(html, "ctl00$Contenido$hdNumeroNombres"));
+    form.set("ctl00$Contenido$apell", getInputValue(html, "ctl00$Contenido$apell"));
+    form.set("ctl00$Contenido$codigoSIA", getInputValue(html, "ctl00$Contenido$codigoSIA"));
+    form.set("ctl00$Contenido$procedimientoSIA", getInputValue(html, "ctl00$Contenido$procedimientoSIA"));
+    form.set("ctl00$Contenido$hdRequiereDNI", getInputValue(html, "ctl00$Contenido$hdRequiereDNI") || "1");
+    form.set("ctl00$Contenido$hdCSV", getInputValue(html, "ctl00$Contenido$hdCSV"));
 
-    
-// Click en botón REAL
-await page.waitForSelector("#ctl00_Contenido_bAceptar", { timeout: 20000 });
+    form.set("ctl00$Contenido$nif", dni);
+    form.set("ctl00$Contenido$soporte", soporte);
+    form.set("ctl00$Contenido$nombre", "");
+    form.set("ctl00$Contenido$apellido", "");
 
-// Click SIN waitForNavigation porque Catastro usa postback ASP.NET
-await page.click("#ctl00_Contenido_bAceptar");
+    // Botón real encontrado en debug:
+    form.set("ctl00$Contenido$bAceptar", "Validar DNI / Soporte");
 
-// Esperar a que cambie el contenido
-await page.waitForFunction(() => {
-  return document.body.innerText.includes("valor") ||
-         document.body.innerText.includes("referencia") ||
-         document.body.innerText.length > 1000;
-}, { timeout: 20000 }).catch(() => {});
+    const postResp = await fetch(url, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": cookies,
+        "Referer": url
+      },
+      body: form.toString()
+    });
 
-// Espera extra
-await page.waitForTimeout(5000);
-    
+    cookies = collectCookies(postResp, cookies);
 
-    // Esperar a que cargue bien después del submit
-    await page.waitForTimeout(5000);
+    const location = postResp.headers.get("location");
+    const postHtml = await postResp.text();
 
-    const html = await page.content();
-
-    await browser.close();
-
-    res.json({
+    return res.json({
       ok: true,
-      url: page.url(),
-      html: html.substring(0, 1500)
+      status: postResp.status,
+      location,
+      cookies_ok: Boolean(cookies),
+      has_valores: postHtml.includes("VALORES DE REFERENCIA"),
+      has_catastral: postHtml.includes("Referencia Catastral"),
+      preview: postHtml.replace(/\s+/g, " ").substring(0, 2000)
     });
 
   } catch (error) {
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
-
-    res.json({
+    return res.json({
       ok: false,
       error: error.message
     });
