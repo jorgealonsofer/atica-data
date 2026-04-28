@@ -51,13 +51,11 @@ app.get("/valor-referencia", async (req, res) => {
 
     await page.select("#ctl00_Contenido_ddlFinalidad", "1");
 
-    await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
-    await page.type("#ctl00_Contenido_txtRC2", refcat);
-  
-    await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }),
-    page.click("#ctl00_Contenido_btnValorReferencia")
-  ]);
+ await page.$eval("#ctl00_Contenido_txtFechaConsulta", el => el.value = "");
+await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
+
+await page.$eval("#ctl00_Contenido_txtRC2", el => el.value = "");
+await page.type("#ctl00_Contenido_txtRC2", refcat);
 
     const resultadoTexto = await page.evaluate(() => {
       return document.body ? document.body.innerText : "";
