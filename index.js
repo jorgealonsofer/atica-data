@@ -79,7 +79,7 @@ app.get("/valor-referencia", async (req, res) => {
 
     const form = new URLSearchParams();
 
-    form.set("__EVENTTARGET", "");
+    form.set("__EVENTTARGET", "ctl00$Contenido$bAceptar");
     form.set("__EVENTARGUMENT", "");
     form.set("__VIEWSTATE", getInputValue(html, "__VIEWSTATE"));
     form.set("__VIEWSTATEGENERATOR", getInputValue(html, "__VIEWSTATEGENERATOR"));
@@ -101,9 +101,6 @@ app.get("/valor-referencia", async (req, res) => {
     form.set("ctl00$Contenido$soporte", soporte);
     form.set("ctl00$Contenido$nombre", "");
     form.set("ctl00$Contenido$apellido", "");
-
-    // Botón real encontrado en debug:
-    form.set("ctl00$Contenido$bAceptar", "Validar DNI / Soporte");
 
     const postResp = await fetch(url, {
       method: "POST",
