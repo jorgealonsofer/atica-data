@@ -51,17 +51,22 @@ app.get("/valor-referencia", async (req, res) => {
 
     await page.select("#ctl00_Contenido_ddlFinalidad", "1");
 
-    await page.evaluate((refcat) => {
-      document.getElementById("ctl00_Contenido_txtFechaConsulta").value = "28/04/2026";
-      document.getElementById("ctl00_Contenido_txtRC2").value = refcat;
+    await page.$eval("#ctl00_Contenido_txtFechaConsulta", el => el.value = "");
+await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
 
-      setTimeout(() => {
-        document.getElementById("ctl00_Contenido_btnValorReferencia").click();
-      }, 300);
-    }, refcat);
+await page.$eval("#ctl00_Contenido_txtRC2", el => el.value = "");
+await page.type("#ctl00_Contenido_txtRC2", refcat);
 
-    await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {});
-    await page.waitForTimeout(5000);
+
+await page.click("#ctl00_Contenido_btnValorReferencia");
+
+await page.waitForFunction(() => {
+  return document.body && (
+    document.body.innerText.includes("Valor de Referencia") ||
+    document.body.innerText.includes("VALOR DE REFERENCIA") ||
+    document.body.innerText.includes("No se ha encontrado")
+  );
+}, { timeout: 60000 });
 
     const finalHtml = await page.content();
     const urlFinal = page.url();
