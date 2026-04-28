@@ -23,8 +23,11 @@ function limpiarTexto(html) {
 }
 
 function extraerValor(texto) {
-  const m = texto.match(/Valor de Referencia\s+([\d.,]+)\s+euros/i);
-  return m ? m[1] : null;
+  const limpio = texto.replace(/\s+/g, " ");
+
+  const match = limpio.match(/Valor de Referencia\s*([\d.,]+)/i);
+
+  return match ? match[1] : null;
 }
 
 app.get("/valor-referencia", async (req, res) => {
