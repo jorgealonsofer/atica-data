@@ -51,15 +51,15 @@ app.get("/valor-referencia", async (req, res) => {
     
     await page.waitForTimeout(8000);
     
-    const text = await page.evaluate(() => document.body.innerText);
+    const resultadoTexto = await page.evaluate(() => document.body.innerText);
     
     await browser.close();
     
     return res.json({
       ok: true,
       url_final: page.url(),
-      tiene_valor: text.includes("Valor de Referencia") || text.includes("VALOR DE REFERENCIA"),
-      texto: text.replace(/\s+/g, " ").substring(0, 4000)
+      tiene_valor: resultadoTexto.includes("Valor de Referencia") || text.includes("VALOR DE REFERENCIA"),
+      texto: resultadoTexto.replace(/\s+/g, " ").substring(0, 4000)
     });
 
     
