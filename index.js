@@ -6,8 +6,22 @@ const app = express();
 
 app.get("/", (req, res) => res.send("API funcionando"));
 
+function cookiesToHeader(cookies) {
+  return cookies.map(c => `${c.name}=${c.value}`).join("; ");
+}
+
+function limpiarTexto(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 app.get("/valor-referencia", async (req, res) => {
   const { dni, soporte, refcat } = req.query;
+  const ejercicio = req.query.ejercicio || "2026";
 
   if (!dni || !soporte || !refcat) {
     return res.json({ ok: false, error: "Faltan dni, soporte o refcat" });
@@ -25,7 +39,7 @@ app.get("/valor-referencia", async (req, res) => {
     const page = await browser.newPage();
 
     await page.goto(
-      "https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=2026",
+      `https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${encodeURIComponent(ejercicio)}`,
       { waitUntil: "networkidle2", timeout: 60000 }
     );
 
@@ -47,38 +61,60 @@ app.get("/valor-referencia", async (req, res) => {
       });
     }
 
-    await page.waitForSelector("#ctl00_Contenido_ddlFinalidad", { timeout: 30000 });
+    const segundaUrl = page.url();
 
-    await page.select("#ctl00_Contenido_ddlFinalidad", "1");
+    const formData = await page.evaluate((refcat) => {
+      const form = new URLSearchParams();
 
-    await page.$eval("#ctl00_Contenido_txtFechaConsulta", el => el.value = "");
-    await page.type("#ctl00_Contenido_txtFechaConsulta", "28/04/2026");
+      document.querySelectorAll("input").forEach(input => {
+        if (input.name) form.set(input.name, input.value || "");
+      });
 
-    await page.$eval("#ctl00_Contenido_txtRC2", el => el.value = "");
-    await page.type("#ctl00_Contenido_txtRC2", refcat);
+      document.querySelectorAll("select").forEach(select => {
+        if (select.name) form.set(select.name, select.value || "");
+      });
 
-    // En vez de hacer click en el botón, pulsamos Enter desde el campo RC.
-    // Evita el error de contexto destruido en Puppeteer.
-    await page.focus("#ctl00_Contenido_txtRC2");
-    await page.keyboard.press("Enter");
+      form.set("__EVENTTARGET", "");
+      form.set("__EVENTARGUMENT", "");
 
-    await page.waitForTimeout(10000);
+      form.set("ctl00$Contenido$ddlFinalidad", "1");
+      form.set("ctl00$Contenido$txtFechaConsulta", "28/04/2026");
+      form.set("ctl00$Contenido$txtRC2", refcat);
+      form.set("ctl00$Contenido$btnValorReferencia", "VALOR DE REFERENCIA");
 
-    const texto = await page.evaluate(() => {
-      return document.body ? document.body.innerText : "";
-    }).catch(() => "");
+      return form.toString();
+    }, refcat);
 
-    const urlFinal = page.url();
+    const cookieHeader = cookiesToHeader(await page.cookies());
 
     await browser.close();
 
+    const postResp = await fetch(segundaUrl, {
+      method: "POST",
+      redirect: "follow",
+      headers: {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "es-ES,es;q=0.9",
+        "content-type": "application/x-www-form-urlencoded",
+        "origin": "https://www.sedecatastro.gob.es",
+        "referer": segundaUrl,
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "cookie": cookieHeader,
+      },
+      body: formData,
+    });
+
+    const finalHtml = await postResp.text();
+    const texto = limpiarTexto(finalHtml);
+
     return res.json({
       ok: true,
-      url_final: urlFinal,
+      status: postResp.status,
+      url_final: postResp.url,
       tiene_valor:
         texto.includes("Valor de Referencia") ||
         texto.includes("VALOR DE REFERENCIA"),
-      texto: texto.replace(/\s+/g, " ").substring(0, 5000),
+      texto: texto.substring(0, 5000),
     });
 
   } catch (error) {
