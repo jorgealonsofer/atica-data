@@ -141,25 +141,6 @@ app.get("/valor-referencia", async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 
-
-app.get("/test-login-fetch", async (req, res) => {
-  try {
-    const response = await fetch("https://OVC.catastro.meh.es/OVCFrames.aspx?TIPO=CONSULTA");
-
-    const text = await response.text();
-
-    res.json({
-      ok: true,
-      length: text.length,
-      snippet: text.slice(0, 500)
-    });
-
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-
 app.listen(PORT, () => console.log("Servidor en puerto " + PORT));
 
 
