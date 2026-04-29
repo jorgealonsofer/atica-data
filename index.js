@@ -141,3 +141,173 @@ app.get("/valor-referencia", async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("Servidor en puerto " + PORT));
+
+
+
+
+
+
+const express = require("express");
+const app = express();
+
+const DNI = process.env.CATASTRO_DNI;
+const SOPORTE = process.env.CATASTRO_SOPORTE;
+
+app.get("/", (req, res) => res.send("API funcionando"));
+
+function decodeHtml(str) {
+  return String(str || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function collectCookies(response, oldCookies = "") {
+  const setCookie = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+  const cookies = oldCookies ? oldCookies.split(";").map(c => c.trim()).filter(Boolean) : [];
+
+  for (const c of setCookie) {
+    cookies.push(c.split(";")[0]);
+  }
+
+  const map = new Map();
+  cookies.forEach(c => {
+    const [k, ...v] = c.split("=");
+    if (k) map.set(k, v.join("="));
+  });
+
+  return Array.from(map.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+function extraerInputs(html) {
+  const form = new URLSearchParams();
+  const inputs = html.match(/<input\b[^>]*>/gi) || [];
+
+  inputs.forEach(input => {
+    const nameMatch = input.match(/\bname=["']([^"']+)["']/i);
+    if (!nameMatch) return;
+
+    const name = decodeHtml(nameMatch[1]);
+    const valueMatch = input.match(/\bvalue=["']([^"']*)["']/i);
+    const value = valueMatch ? decodeHtml(valueMatch[1]) : "";
+
+    form.set(name, value);
+  });
+
+  return form;
+}
+
+function limpiarTexto(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+app.get("/test-login-fetch", async (req, res) => {
+  const ejercicio = req.query.ejercicio || "2026";
+
+  if (!DNI || !SOPORTE) {
+    return res.json({
+      ok: false,
+      error: "Faltan CATASTRO_DNI o CATASTRO_SOPORTE en Render"
+    });
+  }
+
+  try {
+    const base = "https://www.sedecatastro.gob.es";
+    const loginUrl = `${base}/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${encodeURIComponent(ejercicio)}`;
+
+    const commonHeaders = {
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "accept-language": "es-ES,es;q=0.9",
+      "cache-control": "no-cache",
+      "pragma": "no-cache"
+    };
+
+    const getResp = await fetch(loginUrl, {
+      method: "GET",
+      headers: commonHeaders,
+      redirect: "manual"
+    });
+
+    let cookies = collectCookies(getResp);
+    const loginHtml = await getResp.text();
+
+    const form = extraerInputs(loginHtml);
+
+    form.set("__EVENTTARGET", "ctl00$Contenido$bAceptar");
+    form.set("__EVENTARGUMENT", "");
+    form.set("ctl00$Contenido$nif", DNI);
+    form.set("ctl00$Contenido$soporte", SOPORTE);
+    form.set("ctl00$Contenido$nombre", "");
+    form.set("ctl00$Contenido$apellido", "");
+
+    const postResp = await fetch(loginUrl, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        ...commonHeaders,
+        "content-type": "application/x-www-form-urlencoded",
+        "origin": base,
+        "referer": loginUrl,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "cookie": cookies
+      },
+      body: form.toString()
+    });
+
+    cookies = collectCookies(postResp, cookies);
+
+    const location = postResp.headers.get("location");
+    let finalUrl = loginUrl;
+    let finalHtml = await postResp.text();
+
+    if (location) {
+      finalUrl = location.startsWith("http") ? location : base + location;
+
+      const followResp = await fetch(finalUrl, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          ...commonHeaders,
+          "referer": loginUrl,
+          "cookie": cookies
+        }
+      });
+
+      cookies = collectCookies(followResp, cookies);
+      finalHtml = await followResp.text();
+    }
+
+    const texto = limpiarTexto(finalHtml);
+
+    return res.json({
+      ok: finalUrl.includes("OVCBusqueda") || texto.includes("Referencia Catastral"),
+      post_status: postResp.status,
+      location,
+      finalUrl,
+      llega_a_busqueda: finalUrl.includes("OVCBusqueda"),
+      tiene_ref_catastral: texto.includes("Referencia Catastral") || texto.includes("Referencia catastral"),
+      texto: texto.substring(0, 2500)
+    });
+
+  } catch (error) {
+    return res.json({
+      ok: false,
+      error: error.message
+    });
+  }
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log("Servidor en puerto " + PORT));
