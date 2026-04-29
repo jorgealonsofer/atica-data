@@ -147,13 +147,10 @@ app.listen(PORT, () => console.log("Servidor en puerto " + PORT));
 
 
 
-const express = require("express");
-const app = express();
 
 const DNI = process.env.CATASTRO_DNI;
 const SOPORTE = process.env.CATASTRO_SOPORTE;
 
-app.get("/", (req, res) => res.send("API funcionando"));
 
 function decodeHtml(str) {
   return String(str || "")
@@ -309,5 +306,4 @@ app.get("/test-login-fetch", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("Servidor en puerto " + PORT));
+
