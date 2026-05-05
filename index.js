@@ -217,8 +217,6 @@ app.get("/valor-referencia", async (req, res) => {
         encontrado: !!valor,
         valor_referencia: valor,
         valor_numero: valor ? Number(valor.replace(/\./g, "").replace(",", ".")) : null,
-        url_final: postResp.url,
-        texto: texto.substring(0, 1200),
       });
 
     } catch (error) {
