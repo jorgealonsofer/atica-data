@@ -27,32 +27,9 @@ function crearIdConsulta() {
 }
 
 function log(id, mensaje) {
-  console.log(`[${new Date().toISOString()}] [${id}] ${mensaje}`);
-}
-
-async function cerrarContextoSeguro(context, page, id) {
-  try {
-    if (context) {
-      log(id, "Cerrando contexto");
-
-      await Promise.race([
-        context.close(),
-        esperar(3000)
-      ]);
-
-      log(id, "Contexto cerrado");
-      return;
-    }
-
-    if (page) {
-      await Promise.race([
-        page.close(),
-        esperar(3000)
-      ]);
-    }
-  } catch (error) {
-    log(id, `Error cerrando contexto: ${error.message}`);
-  }
+  console.log(
+    `[${new Date().toISOString()}] [${id}] ${mensaje}`
+  );
 }
 
 /*
@@ -83,7 +60,9 @@ async function getBrowser() {
       "--hide-scrollbars",
       "--mute-audio"
     ],
+
     executablePath: await chromium.executablePath(),
+
     headless: true,
   });
 
@@ -99,22 +78,61 @@ async function getBrowser() {
 
 /*
 |--------------------------------------------------------------------------
-| CONTEXTO AISLADO
+| LIMPIAR SESIÓN DE CATASTRO
 |--------------------------------------------------------------------------
 */
 
-async function crearContextoAislado(browser) {
-  if (typeof browser.createBrowserContext === "function") {
-    return await browser.createBrowserContext();
+async function limpiarSesion(browser, page, id) {
+  log(id, "Limpiando sesión anterior");
+
+  /*
+   * Borramos todas las cookies del contexto por defecto.
+   */
+  try {
+    const cookies = await browser.cookies();
+
+    if (cookies.length > 0) {
+      await browser.deleteCookie(...cookies);
+    }
+
+    log(id, `Cookies eliminadas: ${cookies.length}`);
+
+  } catch (error) {
+    log(
+      id,
+      `Aviso borrando cookies: ${error.message}`
+    );
   }
 
-  if (typeof browser.createIncognitoBrowserContext === "function") {
-    return await browser.createIncognitoBrowserContext();
-  }
+  /*
+   * Limpiamos también caché y almacenamiento mediante CDP.
+   */
+  try {
+    const client = await page.createCDPSession();
 
-  throw new Error(
-    "La versión de Puppeteer no permite crear un contexto aislado"
-  );
+    await client.send("Network.clearBrowserCookies");
+    await client.send("Network.clearBrowserCache");
+
+    await client.send("Storage.clearDataForOrigin", {
+      origin: "https://www.sedecatastro.gob.es",
+      storageTypes: "all"
+    });
+
+    await client.send("Storage.clearDataForOrigin", {
+      origin: "https://ovc.catastro.meh.es",
+      storageTypes: "all"
+    });
+
+    await client.detach();
+
+    log(id, "Caché y almacenamiento eliminados");
+
+  } catch (error) {
+    log(
+      id,
+      `Aviso limpiando almacenamiento: ${error.message}`
+    );
+  }
 }
 
 /*
@@ -170,7 +188,7 @@ function extraerValor(texto) {
 
 /*
 |--------------------------------------------------------------------------
-| FETCH CON TIMEOUT REAL
+| FETCH CON TIMEOUT
 |--------------------------------------------------------------------------
 */
 
@@ -191,10 +209,6 @@ async function fetchTextoConTimeout(
       signal: controller.signal
     });
 
-    /*
-     * También esperamos el body dentro del timeout.
-     * No basta con recibir únicamente las cabeceras.
-     */
     const texto = await response.text();
 
     return {
@@ -260,7 +274,6 @@ app.get("/valor-referencia", async (req, res) => {
     const ejercicio =
       req.query.ejercicio || "2026";
 
-    let context = null;
     let page = null;
 
     let paso = "inicio";
@@ -307,34 +320,36 @@ app.get("/valor-referencia", async (req, res) => {
 
       /*
       |--------------------------------------------------------------------------
-      | 2. CONTEXTO AISLADO
-      |--------------------------------------------------------------------------
-      */
-
-      paso = "crear_contexto";
-
-      log(id, "2. Creando contexto aislado");
-
-      context = await crearContextoAislado(browser);
-
-      /*
-      |--------------------------------------------------------------------------
-      | 3. NUEVA PÁGINA
+      | 2. PÁGINA EN CONTEXTO POR DEFECTO
       |--------------------------------------------------------------------------
       */
 
       paso = "crear_pagina";
 
-      log(id, "3. Creando página");
+      log(id, "2. Creando página");
 
-      page = await context.newPage();
+      page = await browser.newPage();
 
       page.setDefaultTimeout(15000);
       page.setDefaultNavigationTimeout(20000);
 
       /*
       |--------------------------------------------------------------------------
-      | 4. BLOQUEAR RECURSOS INNECESARIOS
+      | 3. LIMPIAR SESIÓN ANTERIOR
+      |--------------------------------------------------------------------------
+      */
+
+      paso = "limpiar_sesion";
+
+      await limpiarSesion(
+        browser,
+        page,
+        id
+      );
+
+      /*
+      |--------------------------------------------------------------------------
+      | 4. BLOQUEO DE RECURSOS
       |--------------------------------------------------------------------------
       */
 
@@ -342,7 +357,8 @@ app.get("/valor-referencia", async (req, res) => {
 
       page.on("request", request => {
 
-        const type = request.resourceType();
+        const type =
+          request.resourceType();
 
         if (
           ["image", "font", "media"].includes(type)
@@ -355,13 +371,13 @@ app.get("/valor-referencia", async (req, res) => {
 
       /*
       |--------------------------------------------------------------------------
-      | 5. ABRIR CATastro
+      | 5. ENTRADA OFICIAL CATASTRO
       |--------------------------------------------------------------------------
       */
 
       paso = "abrir_catastro";
 
-      log(id, "4. Abriendo entrada de Catastro");
+      log(id, "3. Abriendo entrada de Catastro");
 
       const urlEntrada =
         `https://www.sedecatastro.gob.es/Accesos/SECAccvrTC.aspx?destino=3&ejercicio=${encodeURIComponent(ejercicio)}`;
@@ -376,18 +392,21 @@ app.get("/valor-referencia", async (req, res) => {
 
       log(
         id,
-        `5. Página cargada: ${page.url()}`
+        `4. Página cargada: ${page.url()}`
       );
 
       /*
       |--------------------------------------------------------------------------
-      | 6. ESPERAR FORMULARIO LOGIN
+      | 6. FORMULARIO LOGIN
       |--------------------------------------------------------------------------
       */
 
       paso = "esperar_formulario_login";
 
-      log(id, "6. Esperando formulario DNI");
+      log(
+        id,
+        "5. Esperando formulario DNI"
+      );
 
       await page.waitForSelector(
         "#ctl00_Contenido_nif",
@@ -403,11 +422,14 @@ app.get("/valor-referencia", async (req, res) => {
         }
       );
 
-      log(id, "7. Formulario DNI encontrado");
+      log(
+        id,
+        "6. Formulario DNI encontrado"
+      );
 
       /*
       |--------------------------------------------------------------------------
-      | 7. INTRODUCIR CREDENCIALES
+      | 7. CREDENCIALES
       |--------------------------------------------------------------------------
       */
 
@@ -423,7 +445,10 @@ app.get("/valor-referencia", async (req, res) => {
         SOPORTE
       );
 
-      log(id, "8. Credenciales introducidas");
+      log(
+        id,
+        "7. Credenciales introducidas"
+      );
 
       /*
       |--------------------------------------------------------------------------
@@ -433,7 +458,7 @@ app.get("/valor-referencia", async (req, res) => {
 
       paso = "login";
 
-      log(id, "9. Enviando login");
+      log(id, "8. Enviando login");
 
       const resultadoLogin =
         await Promise.allSettled([
@@ -450,23 +475,19 @@ app.get("/valor-referencia", async (req, res) => {
 
       log(
         id,
-        `10. Resultado navegación login: ${resultadoLogin[0].status}`
+        `9. Navegación login: ${resultadoLogin[0].status}`
       );
 
       log(
         id,
-        `11. Resultado click login: ${resultadoLogin[1].status}`
+        `10. Click login: ${resultadoLogin[1].status}`
       );
 
-      /*
-       * Pequeña espera para permitir redirecciones adicionales
-       * de Catastro.
-       */
       await esperar(1500);
 
       log(
         id,
-        `12. URL después del login: ${page.url()}`
+        `11. URL después login: ${page.url()}`
       );
 
       /*
@@ -499,21 +520,26 @@ app.get("/valor-referencia", async (req, res) => {
         });
       }
 
-      log(id, "13. Login superado correctamente");
+      log(
+        id,
+        "12. Login superado correctamente"
+      );
 
       /*
       |--------------------------------------------------------------------------
-      | 10. PREPARAR FORMULARIO VALOR REFERENCIA
+      | 10. PREPARAR FORMULARIO
       |--------------------------------------------------------------------------
       */
 
-      paso = "preparar_formulario_valor";
+      paso =
+        "preparar_formulario_valor";
 
-      const segundaUrl = page.url();
+      const segundaUrl =
+        page.url();
 
       log(
         id,
-        `14. Preparando POST a ${segundaUrl}`
+        `13. Preparando POST: ${segundaUrl}`
       );
 
       const formData =
@@ -586,7 +612,7 @@ app.get("/valor-referencia", async (req, res) => {
 
       /*
       |--------------------------------------------------------------------------
-      | 11. COOKIES
+      | 11. COOKIES DE LA SESIÓN ACTUAL
       |--------------------------------------------------------------------------
       */
 
@@ -600,20 +626,21 @@ app.get("/valor-referencia", async (req, res) => {
 
       log(
         id,
-        `15. Cookies obtenidas: ${cookies.length}`
+        `14. Cookies obtenidas: ${cookies.length}`
       );
 
       /*
       |--------------------------------------------------------------------------
-      | 12. POST VALOR DE REFERENCIA
+      | 12. CONSULTA VALOR REFERENCIA
       |--------------------------------------------------------------------------
       */
 
-      paso = "post_valor_referencia";
+      paso =
+        "post_valor_referencia";
 
       log(
         id,
-        "16. Enviando POST de valor de referencia"
+        "15. Enviando POST valor referencia"
       );
 
       const resultado =
@@ -647,31 +674,31 @@ app.get("/valor-referencia", async (req, res) => {
                 cookieHeader
             },
 
-            body: formData
+            body:
+              formData
           },
 
-          /*
-           * MUY IMPORTANTE:
-           * nunca esperamos indefinidamente a Catastro.
-           */
           15000
         );
 
       log(
         id,
-        `17. POST respondido - HTTP ${resultado.status}`
+        `16. POST respondido - HTTP ${resultado.status}`
       );
 
       /*
       |--------------------------------------------------------------------------
-      | 13. EXTRAER RESULTADO
+      | 13. EXTRAER VALOR
       |--------------------------------------------------------------------------
       */
 
-      paso = "extraer_resultado";
+      paso =
+        "extraer_resultado";
 
       const texto =
-        limpiarTexto(resultado.texto);
+        limpiarTexto(
+          resultado.texto
+        );
 
       const valor =
         extraerValor(texto);
@@ -679,29 +706,27 @@ app.get("/valor-referencia", async (req, res) => {
       log(
         id,
         valor
-          ? `18. Valor encontrado: ${valor}`
-          : "18. No se ha encontrado valor en la respuesta"
+          ? `17. Valor encontrado: ${valor}`
+          : "17. No se ha encontrado valor"
       );
-
-      /*
-      |--------------------------------------------------------------------------
-      | RESULTADO
-      |--------------------------------------------------------------------------
-      */
 
       return res.json({
         ok: true,
         ejercicio,
         refcat,
         encontrado: !!valor,
-        valor_referencia: valor,
-        valor_numero: valor
-          ? Number(
-              valor
-                .replace(/\./g, "")
-                .replace(",", ".")
-            )
-          : null
+
+        valor_referencia:
+          valor,
+
+        valor_numero:
+          valor
+            ? Number(
+                valor
+                  .replace(/\./g, "")
+                  .replace(",", ".")
+              )
+            : null
       });
 
     } catch (error) {
@@ -719,13 +744,19 @@ app.get("/valor-referencia", async (req, res) => {
 
     } finally {
 
-      await cerrarContextoSeguro(
-        context,
-        page,
-        id
-      );
+      if (page) {
+        try {
+          await Promise.race([
+            page.close(),
+            esperar(3000)
+          ]);
+        } catch (_) {}
+      }
 
-      log(id, "Consulta terminada");
+      log(
+        id,
+        "Consulta terminada"
+      );
     }
   });
 });
