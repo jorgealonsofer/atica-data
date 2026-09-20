@@ -134,7 +134,7 @@ app.get("/valor-referencia", async (req, res) => {
       });
 
       await page.goto(
-        `https://www.sedecatastro.gob.es/Accesos/SECAccDNI.aspx?Dest=3&ejercicio=${encodeURIComponent(ejercicio)}`,
+        `https://www.sedecatastro.gob.es/Accesos/SECAccvrTC.aspx?destino=3&ejercicio=${encodeURIComponent(ejercicio)}`,
         { waitUntil: "domcontentloaded", timeout: 60000 }
       );
 
